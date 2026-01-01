@@ -105,6 +105,42 @@ genAgvSchedulingTask
   - ห้ามเปลี่ยนถ้า trans_rack_moves.status_process = 1 หรือ 2
   - ยกเว้นกรณีที่เปลี่ยนจากกฎ TonklaEngine3 (cancel)
 
+## TonklaEngine5 (กฎการ callback)
+
+- ใช้ requestBody.taskCode และ requestBody.method เป็นหลัก
+- method = BEGIN:
+  - update trans_rack_moves.status_process = 2
+- method = COMPLETE:
+  - update trans_rack_moves.status_process = 4
+  - update current_position = to_position_id
+- อัปเดตจาก task_code ที่สัมพันธ์กับ taskCode
+- ทุกครั้งที่มีการเปลี่ยน trans_rack_moves:
+  - ต้อง update updated_at
+  - ต้อง insert trans_log_rack_moves
+- ป้องกัน log ซ้ำ:
+  - ถ้าเคยมี log ของ taskCode+method แล้ว จะไม่ log และไม่ประมวลผลซ้ำ
+  - ยกเว้น method = STORE (reserved)
+- Priority สูงกว่า TonklaEngine เดิม:
+  - ถ้า COMPLETE แล้วตำแหน่งปลายทางชนกับ rack อื่น:
+    - status_process = 4 หรือ 48: ให้ log error และ RemoveRack ของ rack อื่น
+    - status_process = 1: ให้ log error และ RemoveRack ของ rack อื่น
+    - status_process = 2: ไม่ต้อง RemoveRack (อนุญาตให้ซ้อนชั่วคราว)
+
+## TonklaEngine6 (กฎการรันแบบ manual)
+
+- เพิ่ม parameter: TonklaEngine (default = 0)
+- TonklaEngine = 1 (เฉพาะเมื่อส่งค่า 1 เท่านั้น):
+  - podCode ต้องมีใน trans_rack_material.rack_id
+  - fromType หรือ toType = 00:
+    - From หรือ To ต้องมีใน master_positions.id
+  - fromType = 03:
+    - From ต้องมีใน master_racks.id
+  - fromType หรือ toType = 04:
+    - From หรือ To ต้องมีใน master_areas.name
+- TonklaEngine = 0:
+  - ถ้า To เป็น type 04 หรือ To หลังประมวลผลเป็น type 00 และอยู่ใน master_positions.id
+    - เปลี่ยน trans_rack_material.material_types_id ของ rack นั้นเป็น unknow_mat
+    - ทำก่อนยิง genAgvSchedulingTask และทำตามกฎเดิมของ trans_rack_moves
 ## การตรวจความสอดคล้องของข้อมูล
 
 เมื่ออ่าน trans_rack_moves เพื่อใช้ในการ lock ระบบจะตรวจ:
